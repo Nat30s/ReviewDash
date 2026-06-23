@@ -394,6 +394,22 @@ body { font-family: 'Inter', sans-serif; background: #fcfcfc; color: #1a1a1a; mi
       <div class="task-list" id="taskList"></div>
     </div>
 
+    <!-- Task log summary -->
+    <div class="breakdown-card" style="margin-top:16px;margin-bottom:0;">
+      <p class="chart-label">Selection Summary</p>
+      <table class="breakdown-table">
+        <thead>
+          <tr>
+            <th style="width:200px;">Project</th>
+            <th>Slots</th>
+            <th>Hours</th>
+            <th style="width:180px;">Share</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+    </div>
+
   </div>
 </div>
 
@@ -750,6 +766,7 @@ function renderDashboard() {
   // Task log
   renderTaskFilters(labels, colors);
   renderTaskList(entries, colors, labels);
+  renderSummary(entries, projList, totalSlots, colors, labels);
 }
 
 function renderTaskFilters(labels, colors) {
@@ -774,6 +791,9 @@ function filterTasks(proj) {
   const colors = labels.map((_, i) => PROJECT_COLORS[i % PROJECT_COLORS.length]);
   renderTaskFilters(labels, colors);
   renderTaskList(sheet.entries, colors, labels);
+  const allEntries = sheet.entries;
+  const allSlots = allEntries.length;
+  renderSummary(allEntries, null, allSlots, colors, labels);
 }
 
 function renderTaskList(entries, colors, labels) {
@@ -837,6 +857,49 @@ function renderTaskList(entries, colors, labels) {
       ${isSingle ? '' : `<div class="acc-body">${childRows}</div>`}
     </div>`;
   }).join('');
+}
+
+function renderSummary(entries, projList, totalSlots, colors, labels) {
+  const body = document.getElementById('summaryBody');
+  if (!body) return;
+
+  if (activeTaskFilter === 'All') {
+    // Show grand total row
+    const totalHrs = (totalSlots * 0.5).toFixed(1);
+    body.innerHTML = `<tr>
+      <td><div class="proj-name-cell">
+        <span class="proj-dot" style="background:#1a1a1a"></span>
+        <span>Total</span>
+      </div></td>
+      <td class="td-right">${totalSlots}</td>
+      <td class="td-bold">${totalHrs} hrs</td>
+      <td class="bar-cell">
+        <div class="mini-bar-track"><div class="mini-bar-fill" style="background:#1a1a1a;width:100%;"></div></div>
+        <span class="mini-pct">100%</span>
+      </td>
+    </tr>`;
+  } else {
+    // Show selected project row
+    const projIdx = labels.indexOf(activeTaskFilter);
+    const color = colors[projIdx] || '#9ca3af';
+    const filtered = entries.filter(e => e.project === activeTaskFilter);
+    const slots = filtered.length;
+    const hrs = (slots * 0.5).toFixed(1);
+    const pct = totalSlots ? ((slots / totalSlots) * 100).toFixed(1) : '0.0';
+    const barW = pct;
+    body.innerHTML = `<tr>
+      <td><div class="proj-name-cell">
+        <span class="proj-dot" style="background:${color}"></span>
+        <span>${activeTaskFilter}</span>
+      </div></td>
+      <td class="td-right">${slots}</td>
+      <td class="td-bold">${hrs} hrs</td>
+      <td class="bar-cell">
+        <div class="mini-bar-track"><div class="mini-bar-fill" style="background:${color};width:${barW}%;"></div></div>
+        <span class="mini-pct">${pct}%</span>
+      </td>
+    </tr>`;
+  }
 }
 
 function toggleCol(col) {

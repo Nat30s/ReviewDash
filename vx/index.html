@@ -563,37 +563,30 @@ function parseWorkbook(wb) {
     // Need at least enough rows to reach data
     if (rows.length < ROW_DATA_START + 1) return;
 
-    // ── Build date column map from rows 1 & 2, starting at column J ──
+    // ── Build date column map from row 1 only, starting at column J ──
+    // Day name is derived from the row 1 date itself — row 2 is ignored
+    // because its formula may reference a different date (e.g. start of week)
     const dateRow = rows[ROW_DATE] || [];
-    const dayRow  = rows[ROW_DAY]  || [];
-
     const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
     const dateCols = [];
     for (let c = COL_DATA_START; c < dateRow.length; c++) {
       const rawDate = dateRow[c];
-      const rawDay  = dayRow[c];
       if (!rawDate && rawDate !== 0) continue;
 
-      // Format date part — row 1 is a Date object (formatted as date in Excel)
+      // Format date part and derive day name — both from row 1 date value
       let datePart = '';
+      let dayPart = '';
       if (rawDate instanceof Date && !isNaN(rawDate)) {
         const d = rawDate.getDate();
         const m = MONTH_SHORT[rawDate.getMonth()];
         const y = String(rawDate.getFullYear()).slice(-2);
         datePart = `${d} ${m} ${y}`;
+        dayPart = DAY_NAMES[rawDate.getDay()]; // derived from same date object
       } else {
         datePart = String(rawDate).trim();
       }
       if (!datePart) continue;
-
-      // Format day part — row 2 is also a Date object (formatted as "Mon" in Excel)
-      let dayPart = '';
-      if (rawDay instanceof Date && !isNaN(rawDay)) {
-        dayPart = DAY_NAMES[rawDay.getDay()];
-      } else if (rawDay) {
-        dayPart = String(rawDay).trim();
-      }
 
       // Combine as "1 Jun 26 (Mon)"
       const label = dayPart ? `${datePart} (${dayPart})` : datePart;

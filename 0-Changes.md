@@ -1,9 +1,20 @@
 
-# v1
+# v1b
 - Date - 23 Jun 26
 - AI Used - Claude
 #### Changes List
-- More formatting for tasks grouping with dates and time mention at the end
+- 90 min (×3) time total pill
+- Selection Summary / details card below task log , new section
+---
+
+
+
+# v1a
+- Date - 23 Jun 26
+- AI Used - Claude
+#### Changes List
+- Accordion task log grouped by project + task, with per-occurrence time slots in children
+- Date / Time Slot show/hide toggles & Columns Change 
 
 ---
 

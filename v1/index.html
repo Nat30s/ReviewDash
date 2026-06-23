@@ -477,13 +477,15 @@ function parseWorkbook(wb) {
     const dateRow = rows[ROW_DATE] || [];
     const dayRow  = rows[ROW_DAY]  || [];
 
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
     const dateCols = [];
     for (let c = COL_DATA_START; c < dateRow.length; c++) {
       const rawDate = dateRow[c];
-      const dayPart = String(dayRow[c] || '').trim();
+      const rawDay  = dayRow[c];
       if (!rawDate && rawDate !== 0) continue;
 
-      // Format date part — handle JS Date objects (from cellDates:true) or plain strings
+      // Format date part — row 1 is a Date object (formatted as date in Excel)
       let datePart = '';
       if (rawDate instanceof Date && !isNaN(rawDate)) {
         const d = rawDate.getDate();
@@ -493,10 +495,17 @@ function parseWorkbook(wb) {
       } else {
         datePart = String(rawDate).trim();
       }
-
       if (!datePart) continue;
 
-      // Combine as "1 Jun 26 (Mon)" — omit day part if missing
+      // Format day part — row 2 is also a Date object (formatted as "Mon" in Excel)
+      let dayPart = '';
+      if (rawDay instanceof Date && !isNaN(rawDay)) {
+        dayPart = DAY_NAMES[rawDay.getDay()];
+      } else if (rawDay) {
+        dayPart = String(rawDay).trim();
+      }
+
+      // Combine as "1 Jun 26 (Mon)"
       const label = dayPart ? `${datePart} (${dayPart})` : datePart;
       dateCols.push({ colIdx: c, label });
     }
@@ -751,24 +760,24 @@ function renderTaskList(entries, colors, labels) {
     return;
   }
 
-  // Group by project + task + timeSlot, preserving chronological order of first occurrence
+  // Group by project + task only (chronological order of first occurrence)
   const groupMap = new Map();
   filtered.forEach(e => {
-    const key = `${e.project}||${e.task || ''}||${e.timeSlot}`;
+    const key = `${e.project}||${e.task || ''}`;
     if (!groupMap.has(key)) {
-      groupMap.set(key, { key, project: e.project, task: e.task, timeSlot: e.timeSlot, dates: [] });
+      // First occurrence — capture its time slot as the header time
+      groupMap.set(key, { project: e.project, task: e.task, firstTimeSlot: e.timeSlot, occurrences: [] });
     }
-    groupMap.get(key).dates.push(e.dateLabel);
+    groupMap.get(key).occurrences.push({ date: e.dateLabel, timeSlot: e.timeSlot });
   });
 
-  // Groups are already in chronological order (insertion order = first appearance)
   const groups = Array.from(groupMap.values());
 
   list.innerHTML = groups.map((g, gi) => {
     const color = colors[labels.indexOf(g.project)] || '#9ca3af';
-    const count = g.dates.length;
-    const firstDate = g.dates[0];
-    const lastDate  = g.dates[count - 1];
+    const count = g.occurrences.length;
+    const firstDate = g.occurrences[0].date;
+    const lastDate  = g.occurrences[count - 1].date;
     const dateRange = count === 1 ? firstDate : `${firstDate} – ${lastDate}`;
     const isSingle  = count === 1;
 
@@ -776,18 +785,18 @@ function renderTaskList(entries, colors, labels) {
       <path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
 
-    const childRows = isSingle ? '' : g.dates.map(d =>
+    const childRows = isSingle ? '' : g.occurrences.map(o =>
       `<div class="acc-child">
         <span class="acc-child-dot" style="background:${color}"></span>
-        <span class="acc-child-date">${d}</span>
-        <span style="color:#9ca3af;font-size:10px;">${g.timeSlot}</span>
+        <span class="acc-child-date">${o.date}</span>
+        <span style="color:#9ca3af;font-size:10px;width:90px;flex-shrink:0;">${o.timeSlot}</span>
       </div>`
     ).join('');
 
     return `<div class="acc-group" id="accg-${gi}">
       <div class="acc-header" onclick="toggleAcc(${gi}, ${isSingle})">
         <span class="acc-arrow">${isSingle ? '' : arrowSvg}</span>
-        <span class="acc-time">${g.timeSlot}</span>
+        <span class="acc-time">${g.firstTimeSlot}</span>
         <span class="acc-proj" style="color:${color}">${g.project}</span>
         <span class="acc-desc">${g.task || '—'}</span>
         <span class="acc-meta">

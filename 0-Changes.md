@@ -1,5 +1,11 @@
 
+# v1
+- Date - 23 Jun 26
+- AI Used - Claude
+#### Changes List
+- More formatting for tasks grouping with dates and time mention at the end
 
+---
 
 # v1
 - Date - 23 Jun 26

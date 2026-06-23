@@ -178,16 +178,43 @@ body { font-family: 'Inter', sans-serif; background: #fcfcfc; color: #1a1a1a; mi
 }
 .task-chip.active { background: #000; color: #fff; border-color: #000; }
 .task-chip:not(.active):hover { border-color: #9ca3af; color: #1a1a1a; }
-.task-list { display: flex; flex-direction: column; gap: 0; max-height: 320px; overflow-y: auto; }
-.task-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 4px; border-bottom: 1px solid #f9f9f9; font-size: 12px;
+.task-list { display: flex; flex-direction: column; gap: 0; max-height: 520px; overflow-y: auto; }
+
+/* Accordion group */
+.acc-group { border-bottom: 1px solid #f3f4f6; }
+.acc-group:last-child { border-bottom: none; }
+.acc-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 4px; cursor: pointer; user-select: none;
+  transition: background 0.12s; border-radius: 8px;
 }
-.task-row:last-child { border-bottom: none; }
-.task-date { color: #9ca3af; font-size: 10px; font-weight: 600; flex-shrink: 0; width: 110px; }
-.task-time { color: #b0b7c3; font-size: 10px; flex-shrink: 0; width: 90px; }
-.task-proj { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-desc { color: #4b5563; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acc-header:hover { background: #fafafa; }
+.acc-arrow {
+  width: 16px; height: 16px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #d1d5db; transition: transform 0.2s;
+}
+.acc-arrow svg { display: block; }
+.acc-group.open .acc-arrow { transform: rotate(90deg); }
+.acc-time { color: #b0b7c3; font-size: 10px; flex-shrink: 0; width: 90px; }
+.acc-proj { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acc-desc { color: #1a1a1a; font-size: 12px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acc-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.acc-count {
+  font-size: 10px; font-weight: 700; color: #6b7280;
+  background: #f3f4f6; border-radius: 99px; padding: 2px 8px;
+}
+.acc-date-range { font-size: 10px; color: #9ca3af; white-space: nowrap; }
+
+/* Expanded child rows */
+.acc-body { display: none; padding-left: 26px; }
+.acc-group.open .acc-body { display: block; }
+.acc-child {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 4px; border-top: 1px solid #f9f9f9; font-size: 11px;
+}
+.acc-child-date { color: #9ca3af; font-size: 10px; font-weight: 600; flex-shrink: 0; width: 110px; }
+.acc-child-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; background: #e5e7eb; }
 
 /* Error toast */
 .toast {
@@ -413,7 +440,7 @@ function handleFile(file) {
   reader.onload = function(e) {
     try {
       const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array' });
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
       const parsed = parseWorkbook(wb);
       if (!parsed.length) {
         hideLoading();
@@ -452,8 +479,21 @@ function parseWorkbook(wb) {
 
     const dateCols = [];
     for (let c = COL_DATA_START; c < dateRow.length; c++) {
-      const datePart = String(dateRow[c] || '').trim();
-      const dayPart  = String(dayRow[c]  || '').trim();
+      const rawDate = dateRow[c];
+      const dayPart = String(dayRow[c] || '').trim();
+      if (!rawDate && rawDate !== 0) continue;
+
+      // Format date part — handle JS Date objects (from cellDates:true) or plain strings
+      let datePart = '';
+      if (rawDate instanceof Date && !isNaN(rawDate)) {
+        const d = rawDate.getDate();
+        const m = MONTH_SHORT[rawDate.getMonth()];
+        const y = String(rawDate.getFullYear()).slice(-2);
+        datePart = `${d} ${m} ${y}`;
+      } else {
+        datePart = String(rawDate).trim();
+      }
+
       if (!datePart) continue;
 
       // Combine as "1 Jun 26 (Mon)" — omit day part if missing
@@ -711,19 +751,59 @@ function renderTaskList(entries, colors, labels) {
     return;
   }
 
-  list.innerHTML = filtered.slice(0, 200).map(e => {
-    const color = colors[labels.indexOf(e.project)] || '#9ca3af';
-    return `<div class="task-row">
-      <span class="task-date">${e.dateLabel}</span>
-      <span class="task-time">${e.timeSlot}</span>
-      <span class="task-proj" style="color:${color}">${e.project}</span>
-      <span class="task-desc">${e.task || '—'}</span>
+  // Group by project + task + timeSlot, preserving chronological order of first occurrence
+  const groupMap = new Map();
+  filtered.forEach(e => {
+    const key = `${e.project}||${e.task || ''}||${e.timeSlot}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, { key, project: e.project, task: e.task, timeSlot: e.timeSlot, dates: [] });
+    }
+    groupMap.get(key).dates.push(e.dateLabel);
+  });
+
+  // Groups are already in chronological order (insertion order = first appearance)
+  const groups = Array.from(groupMap.values());
+
+  list.innerHTML = groups.map((g, gi) => {
+    const color = colors[labels.indexOf(g.project)] || '#9ca3af';
+    const count = g.dates.length;
+    const firstDate = g.dates[0];
+    const lastDate  = g.dates[count - 1];
+    const dateRange = count === 1 ? firstDate : `${firstDate} – ${lastDate}`;
+    const isSingle  = count === 1;
+
+    const arrowSvg = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+
+    const childRows = isSingle ? '' : g.dates.map(d =>
+      `<div class="acc-child">
+        <span class="acc-child-dot" style="background:${color}"></span>
+        <span class="acc-child-date">${d}</span>
+        <span style="color:#9ca3af;font-size:10px;">${g.timeSlot}</span>
+      </div>`
+    ).join('');
+
+    return `<div class="acc-group" id="accg-${gi}">
+      <div class="acc-header" onclick="toggleAcc(${gi}, ${isSingle})">
+        <span class="acc-arrow">${isSingle ? '' : arrowSvg}</span>
+        <span class="acc-time">${g.timeSlot}</span>
+        <span class="acc-proj" style="color:${color}">${g.project}</span>
+        <span class="acc-desc">${g.task || '—'}</span>
+        <span class="acc-meta">
+          <span class="acc-date-range">${isSingle ? firstDate : dateRange}</span>
+          ${count > 1 ? `<span class="acc-count">×${count}</span>` : ''}
+        </span>
+      </div>
+      ${isSingle ? '' : `<div class="acc-body">${childRows}</div>`}
     </div>`;
   }).join('');
+}
 
-  if (filtered.length > 200) {
-    list.innerHTML += `<div style="padding:12px 4px;text-align:center;color:#9ca3af;font-size:11px;">Showing 200 of ${filtered.length} entries</div>`;
-  }
+function toggleAcc(gi, isSingle) {
+  if (isSingle) return;
+  const el = document.getElementById(`accg-${gi}`);
+  if (el) el.classList.toggle('open');
 }
 
 // ═══════════════════════════════════════════
